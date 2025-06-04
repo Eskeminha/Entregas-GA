@@ -30,6 +30,9 @@ using namespace glm;
 #include <cmath>
 #include <ctime>
 
+// STB Easy Font
+#include "stb_easy_font.h"
+
 // Protótipo da função de callback de teclado
 void key_callback(GLFWwindow *window, int key, int scancode, int action, int mode);
 void mouse_button_callback(GLFWwindow *window, int button, int action, int mods);
@@ -39,6 +42,7 @@ GLuint createQuad();
 int setupShader();
 int setupGeometry();
 void eliminarSimilares(float tolerancia);
+void drawText_GL33_centered(float x, float y, const char* text, float r, float g, float b, float scale);
 
 // Dimensões da janela (pode ser alterado em tempo de execução)
 const GLuint WIDTH = 800, HEIGHT = 600;
@@ -86,6 +90,36 @@ int iSelected = -1;
 
 // Criação da grid de quadrados
 Quad grid[ROWS][COLS];
+
+// Variáveis globais para pontuação e controle do jogo
+int score = 0;
+int attempts = 0;
+bool gameOver = false;
+
+// Função para reiniciar o jogo
+void restartGame()
+{
+    score = 0;
+    attempts = 0;
+    iSelected = -1;
+    gameOver = false;
+    for (int i = 0; i < ROWS; i++)
+    {
+        for (int j = 0; j < COLS; j++)
+        {
+            Quad quad;
+            vec2 ini_pos = vec2(QUAD_WIDTH / 2, QUAD_HEIGHT / 2);
+            quad.position = vec3(ini_pos.x + j * QUAD_WIDTH, ini_pos.y + i * QUAD_HEIGHT, 0.0);
+            quad.dimensions = vec3(QUAD_WIDTH, QUAD_HEIGHT, 1.0);
+            float r = rand() % 256 / 255.0;
+            float g = rand() % 256 / 255.0;
+            float b = rand() % 256 / 255.0;
+            quad.color = vec3(r, g, b);
+            quad.eliminated = false;
+            grid[i][j] = quad;
+        }
+    }
+}
 
 // Função MAIN
 int main()
@@ -140,30 +174,7 @@ int main()
 	GLuint VAO = createQuad();
 
 	// Inicializar a grid
-	for (int i = 0; i < ROWS; i++)
-	{
-		for (int j = 0; j < COLS; j++)
-		{
-			Quad quad;
-			vec2 ini_pos = vec2(QUAD_WIDTH / 2, QUAD_HEIGHT / 2);
-			quad.position = vec3(ini_pos.x + j * QUAD_WIDTH, ini_pos.y + i * QUAD_HEIGHT, 0.0);
-			quad.dimensions = vec3(QUAD_WIDTH, QUAD_HEIGHT, 1.0);
-			float r, g, b;
-			r = rand() % 256 / 255.0;
-			g = rand() % 256 / 255.0;
-			b = rand() % 256 / 255.0;
-			quad.color = vec3(r, g, b);
-			quad.eliminated = false;
-			grid[i][j] = quad;
-		}
-	}
-
-	// Triangle tri;
-	// tri.position = vec3(400.0,300.0,0.0);
-	// tri.dimensions = vec3(100.0,100.0,1.0);
-	// tri.color = vec3(colors[iColor].r, colors[iColor].g, colors[iColor].b);
-	// iColor = (iColor + 1) % colors.size();
-	// triangles.push_back(tri);
+	restartGame();
 
 	glUseProgram(shaderID);
 
@@ -192,7 +203,7 @@ int main()
 
 		glBindVertexArray(VAO); // Conectando ao buffer de geometria
 
-		if (iSelected > -1)
+		if (iSelected > -1 && !gameOver)
 		{
 			eliminarSimilares(0.2);
 		}
@@ -221,6 +232,37 @@ int main()
 
 		glBindVertexArray(0); // Desconectando o buffer de geometria
 
+		// Desabilita o shader para pipeline fixo do OpenGL
+		glUseProgram(0);
+
+		// Desenha a pontuação e tentativas na tela
+		char info[128];
+		sprintf(info, "Pontuacao: %d  Tentativas: %d", score, attempts);
+
+		// Centralizado no topo
+		drawText_GL33_centered(WIDTH/2, 40, info, 1, 1, 1, 2.0f); // 2.0f = dobro do tamanho padrão
+
+		if (gameOver) {
+		    drawText_GL33_centered(WIDTH/2, 100, "Fim de jogo! Pressione R para reiniciar.", 1, 1, 0, 2.0f);
+		}
+
+		// Volta para o shader para o próximo frame
+		glUseProgram(shaderID);
+
+		// Verifica se todos foram eliminados
+		bool allEliminated = true;
+		for (int i = 0; i < ROWS; i++)
+			for (int j = 0; j < COLS; j++)
+				if (!grid[i][j].eliminated)
+					allEliminated = false;
+
+		if (allEliminated && !gameOver)
+		{
+			cout << "Fim de jogo! Pontuação final: " << score << " em " << attempts << " tentativas." << endl;
+			cout << "Pressione R para reiniciar." << endl;
+			gameOver = true;
+		}
+
 		// Troca os buffers da tela
 		glfwSwapBuffers(window);
 	}
@@ -238,6 +280,9 @@ void key_callback(GLFWwindow *window, int key, int scancode, int action, int mod
 {
 	if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS)
 		glfwSetWindowShouldClose(window, GL_TRUE);
+
+    if (key == GLFW_KEY_R && action == GLFW_PRESS)
+        restartGame();
 }
 
 // Esta função está basntante hardcoded - objetivo é compilar e "buildar" um programa de
@@ -294,17 +339,17 @@ int setupShader()
 
 void mouse_button_callback(GLFWwindow *window, int button, int action, int mods)
 {
-	if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS)
-	{
-		double xpos, ypos;
-		glfwGetCursorPos(window, &xpos, &ypos);
-		cout << xpos << "  " << ypos << " ----- ";
-		cout << xpos / QUAD_WIDTH << " " << ypos / QUAD_HEIGHT << endl;
-		int x = xpos / QUAD_WIDTH;
-		int y = ypos / QUAD_HEIGHT;
-		grid[y][x].eliminated = true;
-		iSelected = x + y * COLS; //indice linear do quadrado selecionado
-	}
+    if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS && !gameOver)
+    {
+        double xpos, ypos;
+        glfwGetCursorPos(window, &xpos, &ypos);
+        int x = xpos / QUAD_WIDTH;
+        int y = ypos / QUAD_HEIGHT;
+        if (x >= 0 && x < COLS && y >= 0 && y < ROWS && !grid[y][x].eliminated)
+        {
+            iSelected = x + y * COLS;
+        }
+    }
 }
 
 GLuint createQuad()
@@ -355,23 +400,109 @@ GLuint createQuad()
 
 void eliminarSimilares(float tolerancia)
 {
-	int x = iSelected % COLS;
-	int y = iSelected / COLS;
-	vec3 C = grid[y][x].color;
-	grid[y][x].eliminated = true;
-	for (int i = 0; i < ROWS; i++)
-	{
-		for (int j=0; j < COLS; j++)
-		{
-			vec3 O = grid[i][j].color;
-			float d = sqrt(pow(C.r-O.r,2) + pow(C.g-O.g,2) + pow(C.b-O.b,2));
-			float dd = d/dMax;
-			if (dd <= tolerancia)
-			{
-				grid[i][j].eliminated = true;
-			}
-
-		}
-	}
-	iSelected = -1;
+    int x = iSelected % COLS;
+    int y = iSelected / COLS;
+    vec3 C = grid[y][x].color;
+    int eliminados = 0;
+    for (int i = 0; i < ROWS; i++)
+    {
+        for (int j = 0; j < COLS; j++)
+        {
+            if (!grid[i][j].eliminated)
+            {
+                vec3 O = grid[i][j].color;
+                float d = sqrt(pow(C.r - O.r, 2) + pow(C.g - O.g, 2) + pow(C.b - O.b, 2));
+                float dd = d / dMax;
+                if (dd <= tolerancia)
+                {
+                    grid[i][j].eliminated = true;
+                    eliminados++;
+                }
+            }
+        }
+    }
+    // Pontuação: mais eliminações = mais pontos, penaliza tentativas
+    if (eliminados > 0)
+        score += eliminados * 10 - attempts * 2;
+    attempts++;
+    iSelected = -1;
 }
+
+
+void drawText_GL33_centered(float x, float y, const char* text, float r, float g, float b, float scale)
+{
+    static GLuint vbo = 0, vao = 0;
+    static GLuint shader = 0;
+    static GLint uniColor = -1, uniProjection = -1;
+
+    char buffer[99999];
+    int num_quads = stb_easy_font_print(0, 0, (char*)text, NULL, buffer, sizeof(buffer));
+
+    // Calcula largura do texto
+    int text_width = stb_easy_font_width((char*)text);
+
+    // Centraliza horizontalmente
+    float x_offset = x - (text_width * scale) / 2.0f;
+
+    // Aplica escala nos vértices
+    float* verts = (float*)buffer;
+    for (int i = 0; i < num_quads * 4; ++i) {
+        verts[i * 4 + 0] = verts[i * 4 + 0] * scale + x_offset;
+        verts[i * 4 + 1] = verts[i * 4 + 1] * scale + y;
+    }
+
+    if (shader == 0) {
+        // Vertex shader simples para 2D
+        const char* vs =
+            "#version 330 core\n"
+            "layout(location=0) in vec2 pos;\n"
+            "uniform mat4 projection;\n"
+            "void main(){ gl_Position = projection * vec4(pos,0,1); }\n";
+        // Fragment shader simples para cor uniforme
+        const char* fs =
+            "#version 330 core\n"
+            "uniform vec3 color;\n"
+            "out vec4 FragColor;\n"
+            "void main(){ FragColor = vec4(color,1); }\n";
+        GLuint vsId = glCreateShader(GL_VERTEX_SHADER);
+        GLuint fsId = glCreateShader(GL_FRAGMENT_SHADER);
+        glShaderSource(vsId, 1, &vs, NULL); glCompileShader(vsId);
+        glShaderSource(fsId, 1, &fs, NULL); glCompileShader(fsId);
+        shader = glCreateProgram();
+        glAttachShader(shader, vsId); glAttachShader(shader, fsId);
+        glLinkProgram(shader);
+        glDeleteShader(vsId); glDeleteShader(fsId);
+        uniColor = glGetUniformLocation(shader, "color");
+        uniProjection = glGetUniformLocation(shader, "projection");
+    }
+
+    if (vao == 0) {
+        glGenVertexArrays(1, &vao);
+        glGenBuffers(1, &vbo);
+    }
+
+    glBindVertexArray(vao);
+    glBindBuffer(GL_ARRAY_BUFFER, vbo);
+    glBufferData(GL_ARRAY_BUFFER, num_quads * 4 * 16, buffer, GL_DYNAMIC_DRAW);
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 16, (void*)0);
+
+    glUseProgram(shader);
+
+    // Projeção ortográfica para 2D
+    float ortho[16] = {
+        2.0f/WIDTH, 0, 0, 0,
+        0, -2.0f/HEIGHT, 0, 0,
+        0, 0, -1, 0,
+        -1, 1, 0, 1
+    };
+    glUniformMatrix4fv(uniProjection, 1, GL_FALSE, ortho);
+    glUniform3f(uniColor, r, g, b);
+
+    glDrawArrays(GL_QUADS, 0, num_quads * 4);
+
+    glBindVertexArray(0);
+    glUseProgram(0);
+}
+
+
