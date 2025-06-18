@@ -99,7 +99,7 @@ bool gameOver = false;
 // Função para reiniciar o jogo
 void restartGame()
 {
-    score = 0;
+    score = 500;
     attempts = 0;
     iSelected = -1;
     gameOver = false;
@@ -249,12 +249,18 @@ int main()
 		// Volta para o shader para o próximo frame
 		glUseProgram(shaderID);
 
-		// Verifica se todos foram eliminados
+		// Verifica se todos foram eliminados e se tem score
 		bool allEliminated = true;
-		for (int i = 0; i < ROWS; i++)
+		if(score > 0 && !gameOver)
+		{
+			for (int i = 0; i < ROWS; i++)
 			for (int j = 0; j < COLS; j++)
 				if (!grid[i][j].eliminated)
 					allEliminated = false;
+		} else if(score  <= 0){
+			score = 0;
+		}
+		
 
 		if (allEliminated && !gameOver)
 		{
@@ -423,7 +429,7 @@ void eliminarSimilares(float tolerancia)
     }
     // Pontuação: mais eliminações = mais pontos, penaliza tentativas
     if (eliminados > 0)
-        score += eliminados * 10 - attempts * 2;
+        score -= eliminados * 10 - attempts * 1.2;
     attempts++;
     iSelected = -1;
 }
