@@ -259,6 +259,7 @@ int main()
 					allEliminated = false;
 		} else if(score  <= 0){
 			score = 0;
+			gameOver = true;
 		}
 		
 
@@ -427,9 +428,9 @@ void eliminarSimilares(float tolerancia)
             }
         }
     }
-    // Pontuação: mais eliminações = mais pontos, penaliza tentativas
+    // Pontuação: mais eliminações = reduz pontos e penaliza pela quantidade de tentativas
     if (eliminados > 0)
-        score -= eliminados * 10 - attempts * 1.2;
+        score -= eliminados * 10 - attempts * 2.5;
     attempts++;
     iSelected = -1;
 }
