@@ -57,7 +57,7 @@ set(EXERCISES
     Modulo2/Ex1Parte2M2
     Modulo3/M3JogoCores
     Modulo4/M4Sprites
-    Modulo5/HelloSprite
+    Modulo5/M5Animated
 )
 
 add_compile_options(-Wno-pragmas)
