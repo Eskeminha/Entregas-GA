@@ -47,18 +47,83 @@ using namespace std;
 
 using namespace glm;
 
+#define WIDTH_SET 800
+#define HEIGHT_SET 600
+
+// Dimensões da janela (pode ser alterado em tempo de execução)
+const GLuint WIDTH = WIDTH_SET, HEIGHT = HEIGHT_SET;
 
 struct Sprite
 {
-	GLuint VAO;
-	GLuint texID;
-	vec3 position;
-	vec3 dimensions; //tamanho do frame
-	float ds, dt;
-	int iAnimation, iFrame;
-	int nAnimations, nFrames;
+    GLuint VAO;
+    GLuint texID;
+    vec3 position;
+    vec3 dimensions; //tamanho do frame
+    float ds, dt;
+    int iAnimation, iFrame;
+    int nAnimations, nFrames;
 
+    virtual void update(double deltaT, double FPS) {
+        // Atualiza apenas o frame da animação (loop)
+        if (deltaT >= 1.0 / FPS) {
+            iFrame = (iFrame + 1) % nFrames;
+        }
+    }
+    
 };
+
+struct CharacterController : public Sprite
+{
+    float speed = 100.0f; // pixels por segundo, valor típico para movimento suave
+
+    void processInput(GLFWwindow* window, float deltaT) {
+        bool moved = false;
+        float halfWidth = dimensions.x / 2.0f;
+        float halfHeight = dimensions.y / 2.0f;
+        float moveStep = speed * deltaT;
+
+        if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS || glfwGetKey(window, GLFW_KEY_UP) == GLFW_PRESS) {
+            position.y += moveStep;
+            iAnimation = 2; // cima
+            moved = true;
+        }
+        if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS || glfwGetKey(window, GLFW_KEY_DOWN) == GLFW_PRESS) {
+            position.y -= moveStep;
+            iAnimation = 1; // baixo
+            moved = true;
+        }
+        if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS || glfwGetKey(window, GLFW_KEY_LEFT) == GLFW_PRESS) {
+            position.x -= moveStep;
+            iAnimation = 3; // esquerda
+            moved = true;
+        }
+        if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS || glfwGetKey(window, GLFW_KEY_RIGHT) == GLFW_PRESS) {
+            position.x += moveStep;
+            iAnimation = 0; // direita
+            moved = true;
+        }
+        // Limita o personagem à borda da tela
+        if (position.x - halfWidth < 0.0f) position.x = halfWidth;
+        if (position.x + halfWidth > WIDTH) position.x = WIDTH - halfWidth;
+        if (position.y - halfHeight < 0.0f) position.y = halfHeight;
+        if (position.y + halfHeight > HEIGHT) position.y = HEIGHT - halfHeight;
+
+        if (!moved) {
+            iFrame = 0;
+        }
+        isMoving = moved;
+    }
+
+    void update(double deltaT, double FPS) override {
+        // Só avança o frame se estiver se movendo
+        if (isMoving && deltaT >= 1.0 / FPS) {
+            iFrame = (iFrame + 1) % nFrames;
+        }
+    }
+
+    bool isMoving = false;
+};
+// -------FIM DA IMPLEMENTAÇÃO PARA O TRABALHO
 
 // Protótipo da função de callback de teclado
 void key_callback(GLFWwindow *window, int key, int scancode, int action, int mode);
@@ -68,8 +133,7 @@ int setupShader();
 int setupSprite(int nAnimations, int nFrames, float &ds, float &dt);
 int loadTexture(string filePath, int &width, int &height);
 
-// Dimensões da janela (pode ser alterado em tempo de execução)
-const GLuint WIDTH = 800, HEIGHT = 600;
+
 
 // Código fonte do Vertex Shader (em GLSL): ainda hardcoded
 const GLchar *vertexShaderSource = R"(
@@ -81,8 +145,8 @@ const GLchar *vertexShaderSource = R"(
  uniform mat4 projection;
  void main()
  {
-	tex_coord = vec2(texc.s, 1.0 - texc.t);
-	gl_Position = projection * model * vec4(position, 1.0);
+    tex_coord = vec2(texc.s, 1.0 - texc.t);
+    gl_Position = projection * model * vec4(position, 1.0);
  }
  )";
 
@@ -96,224 +160,282 @@ const GLchar *fragmentShaderSource = R"(
 
  void main()
  {
-	 color = texture(tex_buff,tex_coord + offsetTex);
+     color = texture(tex_buff,tex_coord + offsetTex);
  }
  )";
 
 // Função MAIN
 int main()
 {
-	// Inicialização da GLFW
-	glfwInit();
+    // Inicialização da GLFW
+    glfwInit();
 
-	// Muita atenção aqui: alguns ambientes não aceitam essas configurações
-	// Você deve adaptar para a versão do OpenGL suportada por sua placa
-	// Sugestão: comente essas linhas de código para desobrir a versão e
-	// depois atualize (por exemplo: 4.5 com 4 e 5)
-	// glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
-	// glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 0);
-	// glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
-	// glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+    // Muita atenção aqui: alguns ambientes não aceitam essas configurações
+    // Você deve adaptar para a versão do OpenGL suportada por sua placa
+    // Sugestão: comente essas linhas de código para desobrir a versão e
+    // depois atualize (por exemplo: 4.5 com 4 e 5)
+    // glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
+    // glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 0);
+    // glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
+    // glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 
-	// Ativa a suavização de serrilhado (MSAA) com 8 amostras por pixel
-	glfwWindowHint(GLFW_SAMPLES, 8);
+    // Ativa a suavização de serrilhado (MSAA) com 8 amostras por pixel
+    glfwWindowHint(GLFW_SAMPLES, 8);
 
-	// Essencial para computadores da Apple
-	// #ifdef __APPLE__
-	//	glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
-	// #endif
+    // Essencial para computadores da Apple
+    // #ifdef __APPLE__
+    //    glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
+    // #endif
 
-	// Criação da janela GLFW
-	GLFWwindow *window = glfwCreateWindow(WIDTH, HEIGHT, "Ola Triangulo! -- Rossana", nullptr, nullptr);
-	if (!window)
-	{
-		std::cerr << "Falha ao criar a janela GLFW" << std::endl;
-		glfwTerminate();
-		return -1;
-	}
-	glfwMakeContextCurrent(window);
+    // Criação da janela GLFW
+    GLFWwindow *window = glfwCreateWindow(WIDTH, HEIGHT, "Ola Triangulo! -- Rossana", nullptr, nullptr);
+    if (!window)
+    {
+        std::cerr << "Falha ao criar a janela GLFW" << std::endl;
+        glfwTerminate();
+        return -1;
+    }
+    glfwMakeContextCurrent(window);
 
-	// Fazendo o registro da função de callback para a janela GLFW
-	glfwSetKeyCallback(window, key_callback);
+    // Fazendo o registro da função de callback para a janela GLFW
+    glfwSetKeyCallback(window, key_callback);
 
-	// GLAD: carrega todos os ponteiros d funções da OpenGL
-	if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress))
-	{
-		std::cerr << "Falha ao inicializar GLAD" << std::endl;
-		return -1;
-	}
+    // GLAD: carrega todos os ponteiros d funções da OpenGL
+    if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress))
+    {
+        std::cerr << "Falha ao inicializar GLAD" << std::endl;
+        return -1;
+    }
 
-	// Obtendo as informações de versão
-	const GLubyte *renderer = glGetString(GL_RENDERER); /* get renderer string */
-	const GLubyte *version = glGetString(GL_VERSION);	/* version as a string */
-	cout << "Renderer: " << renderer << endl;
-	cout << "OpenGL version supported " << version << endl;
+    // Obtendo as informações de versão
+    const GLubyte *renderer = glGetString(GL_RENDERER); /* get renderer string */
+    const GLubyte *version = glGetString(GL_VERSION);   /* version as a string */
+    cout << "Renderer: " << renderer << endl;
+    cout << "OpenGL version supported " << version << endl;
 
-	// Definindo as dimensões da viewport com as mesmas dimensões da janela da aplicação
-	int width, height;
-	glfwGetFramebufferSize(window, &width, &height);
-	glViewport(0, 0, width, height);
+    // Definindo as dimensões da viewport com as mesmas dimensões da janela da aplicação
+    int width, height;
+    glfwGetFramebufferSize(window, &width, &height);
+    glViewport(0, 0, width, height);
 
-	// Compilando e buildando o programa de shader
-	GLuint shaderID = setupShader();
+    // Compilando e buildando o programa de shader
+    GLuint shaderID = setupShader();
 
-	//Carregando uma textura 
-	int imgWidth, imgHeight;
-	GLuint texID = loadTexture("../assets/sprites/Vampires1_Walk_full.png",imgWidth,imgHeight);
+    //Carregando uma textura 
+    int imgWidth, imgHeight;
+    GLuint texID = loadTexture("../assets/sprites/Vampires1_Walk_full.png",imgWidth,imgHeight);
 
-	// Gerando um buffer simples, com a geometria de um triângulo
-	Sprite vampirao;
-	vampirao.nAnimations = 4;
-	vampirao.nFrames = 6;
-	vampirao.VAO = setupSprite(vampirao.nAnimations,vampirao.nFrames,vampirao.ds,vampirao.dt);
-	vampirao.position = vec3(400.0, 150.0, 0.0);
-	vampirao.dimensions = vec3(imgWidth/vampirao.nFrames*4,imgHeight/vampirao.nAnimations*4,1.0);
-	vampirao.texID = texID;
-	vampirao.iAnimation = 1;
-	vampirao.iFrame = 0;
+    //----------INICIO DO COMENTARIO DO CÓDIGO ANTIGO
+    /*
+    // Gerando um buffer simples, com a geometria de um triângulo
+    Sprite vampirao;
+    vampirao.nAnimations = 4;
+    vampirao.nFrames = 6;
+    vampirao.VAO = setupSprite(vampirao.nAnimations,vampirao.nFrames,vampirao.ds,vampirao.dt);
+    vampirao.position = vec3(400.0, 150.0, 0.0);
+    vampirao.dimensions = vec3(imgWidth/vampirao.nFrames*4,imgHeight/vampirao.nAnimations*4,1.0);
+    vampirao.texID = texID;
+    vampirao.iAnimation = 1;
+    vampirao.iFrame = 0;
+    */
+    //---------FIM DO COMENTÁRIO DO CÓDIGO ANTIGO
 
-	Sprite background;
-	background.nAnimations = 1;
-	background.nFrames = 1;
-	background.VAO = setupSprite(background.nAnimations,background.nFrames,background.ds,background.dt);
-	background.position = vec3(400.0, 300.0, 0.0);
-	background.texID = loadTexture("../assets/backgrounds/bg_pixelado.png",imgWidth,imgHeight);
-	background.dimensions = vec3(imgWidth/background.nFrames*0.5,imgHeight/background.nAnimations*0.5,1.0);
-	background.iAnimation = 0;
-	background.iFrame = 0;
+    //------ INICIO DA IMPLEMENTAÇÃO PARA O TRABALHO
+    // Usando CharacterController para o personagem principal
+    CharacterController vampirao;
+    vampirao.nAnimations = 4;
+    vampirao.nFrames = 6;
+    vampirao.VAO = setupSprite(vampirao.nAnimations, vampirao.nFrames, vampirao.ds, vampirao.dt);
+    vampirao.position = vec3(400.0, 150.0, 0.0);
+    vampirao.dimensions = vec3((imgWidth / vampirao.nFrames * 4) / 2.0f, (imgHeight / vampirao.nAnimations * 4) / 2.0f, 1.0); // reduzido pela metade
+    vampirao.texID = texID;
+    vampirao.iAnimation = 0; // Começa olhando para baixo
+    vampirao.iFrame = 0;
+    // -------FIM DA IMPLEMENTAÇÃO PARA O TRABALHO
 
-	
+    Sprite background;
+    background.nAnimations = 1;
+    background.nFrames = 1;
+    background.VAO = setupSprite(background.nAnimations,background.nFrames,background.ds,background.dt);
+    background.position = vec3(400.0, 300.0, 0.0);
+    background.texID = loadTexture("../assets/backgrounds/bg_pixelado.png",imgWidth,imgHeight);
+    background.dimensions = vec3(imgWidth/background.nFrames*0.5,imgHeight/background.nAnimations*0.5,1.0);
+    background.iAnimation = 0;
+    background.iFrame = 0;
 
-	glUseProgram(shaderID); // Reseta o estado do shader para evitar problemas futuros
+    glUseProgram(shaderID); // Reseta o estado do shader para evitar problemas futuros
 
-	double prev_s = glfwGetTime();	// Define o "tempo anterior" inicial.
-	double title_countdown_s = 0.1; // Intervalo para atualizar o título da janela com o FPS.
+    double prev_s = glfwGetTime();   // Define o "tempo anterior" inicial.
+    double title_countdown_s = 0.1; // Intervalo para atualizar o título da janela com o FPS.
 
-	float colorValue = 0.0;
+    float colorValue = 0.0;
 
-	// Ativando o primeiro buffer de textura do OpenGL
-	glActiveTexture(GL_TEXTURE0);
+    // Ativando o primeiro buffer de textura do OpenGL
+    glActiveTexture(GL_TEXTURE0);
 
-	// Criando a variável uniform pra mandar a textura pro shader
-	glUniform1i(glGetUniformLocation(shaderID, "tex_buff"), 0);
+    // Criando a variável uniform pra mandar a textura pro shader
+    glUniform1i(glGetUniformLocation(shaderID, "tex_buff"), 0);
 
-	// Matriz de projeção paralela ortográfica
-	mat4 projection = ortho(0.0, 800.0, 0.0, 600.0, -1.0, 1.0);
-	glUniformMatrix4fv(glGetUniformLocation(shaderID, "projection"), 1, GL_FALSE, value_ptr(projection));
+    // Matriz de projeção paralela ortográfica
+    mat4 projection = ortho(0.0, 800.0, 0.0, 600.0, -1.0, 1.0);
+    glUniformMatrix4fv(glGetUniformLocation(shaderID, "projection"), 1, GL_FALSE, value_ptr(projection));
 
-	glEnable(GL_DEPTH_TEST); // Habilita o teste de profundidade
-	glDepthFunc(GL_ALWAYS); // Testa a cada ciclo
+    glEnable(GL_DEPTH_TEST); // Habilita o teste de profundidade
+    glDepthFunc(GL_ALWAYS); // Testa a cada ciclo
 
-	glEnable(GL_BLEND); //Habilita a transparência -- canal alpha
-	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA); //Seta função de transparência
+    glEnable(GL_BLEND); //Habilita a transparência -- canal alpha
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA); //Seta função de transparência
 
+    double lastTime = glfwGetTime(); // Agora armazena o tempo do último frame
+    double animTime = 0.0; // Acumula o tempo para animação
+    double currTime = 0.0;
+    double deltaT = 0.0;
+    double FPS = vampirao.nFrames;
 
-	double lastTime = 0.0;
-	double deltaT = 0.0;
-	double currTime = glfwGetTime();
-	double FPS = 12.0;
+    vec2 offsetTexBg = vec2(0.0,0.0);
 
+    //------ INICIO DA IMPLEMENTAÇÃO PARA O TRABALHO
+    vec2 offsetTex;
+    // -------FIM DA IMPLEMENTAÇÃO PARA O TRABALHO
 
-	vec2 offsetTexBg = vec2(0.0,0.0);
-	// Loop da aplicação - "game loop"
-	while (!glfwWindowShouldClose(window))
-	{
-		// Este trecho de código é totalmente opcional: calcula e mostra a contagem do FPS na barra de título
-		{
-			double curr_s = glfwGetTime();		// Obtém o tempo atual.
-			double elapsed_s = curr_s - prev_s; // Calcula o tempo decorrido desde o último frame.
-			prev_s = curr_s;					// Atualiza o "tempo anterior" para o próximo frame.
+    // Loop da aplicação - "game loop"
+    while (!glfwWindowShouldClose(window))
+    {
+        // Este trecho de código é totalmente opcional: calcula e mostra a contagem do FPS na barra de título
+        {
+            double curr_s = glfwGetTime();      // Obtém o tempo atual.
+            double elapsed_s = curr_s - prev_s; // Calcula o tempo decorrido desde o último frame.
+            prev_s = curr_s;                    // Atualiza o "tempo anterior" para o próximo frame.
 
-			// Exibe o FPS, mas não a cada frame, para evitar oscilações excessivas.
-			title_countdown_s -= elapsed_s;
-			if (title_countdown_s <= 0.0 && elapsed_s > 0.0)
-			{
-				double fps = 1.0 / elapsed_s; // Calcula o FPS com base no tempo decorrido.
+            // Exibe o FPS, mas não a cada frame, para evitar oscilações excessivas.
+            title_countdown_s -= elapsed_s;
+            if (title_countdown_s <= 0.0 && elapsed_s > 0.0)
+            {
+                double fps = 1.0 / elapsed_s; // Calcula o FPS com base no tempo decorrido.
 
-				// Cria uma string e define o FPS como título da janela.
-				char tmp[256];
-				sprintf(tmp, "Ola Triangulo! -- Rossana\tFPS %.2lf", fps);
-				glfwSetWindowTitle(window, tmp);
+                // Cria uma string e define o FPS como título da janela.
+                char tmp[256];
+                sprintf(tmp, "Ola Triangulo! -- Rossana\tFPS %.2lf", fps);
+                glfwSetWindowTitle(window, tmp);
 
-				title_countdown_s = 0.1; // Reinicia o temporizador para atualizar o título periodicamente.
-			}
-		}
+                title_countdown_s = 0.1; // Reinicia o temporizador para atualizar o título periodicamente.
+            }
+        }
 
-		// Checa se houveram eventos de input (key pressed, mouse moved etc.) e chama as funções de callback correspondentes
-		glfwPollEvents();
+        // Checa se houveram eventos de input (key pressed, mouse moved etc.) e chama as funções de callback correspondentes
+        glfwPollEvents();
 
-		// Limpa o buffer de cor
-		glClearColor(0.0f, 0.0f, 0.0f, 1.0f); // cor de fundo
-		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        // Limpa o buffer de cor
+        glClearColor(0.0f, 0.0f, 0.0f, 1.0f); // cor de fundo
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-		glLineWidth(10);
-		glPointSize(20);
+        glLineWidth(10);
+        glPointSize(20);
 
-		// Desenho do background
-		// Matriz de transformaçao do objeto - Matriz de modelo
-		mat4 model = mat4(1); //matriz identidade
-		model = translate(model,background.position);
-		model = rotate(model, radians(0.0f), vec3(0.0, 0.0, 1.0));
-		model = scale(model,background.dimensions);
-		glUniformMatrix4fv(glGetUniformLocation(shaderID, "model"), 1, GL_FALSE, value_ptr(model));
+        // Desenho do background
+        // Matriz de transformaçao do objeto - Matriz de modelo
+        mat4 model = mat4(1); //matriz identidade
+        model = translate(model,background.position);
+        model = rotate(model, radians(0.0f), vec3(0.0, 0.0, 1.0));
+        model = scale(model,background.dimensions);
+        glUniformMatrix4fv(glGetUniformLocation(shaderID, "model"), 1, GL_FALSE, value_ptr(model));
 
-		
+        currTime = glfwGetTime();
+        deltaT = currTime - lastTime;
+        lastTime = currTime;
+        animTime += deltaT; // Acumula o tempo para animação corretamente
 
-		currTime = glfwGetTime();
-		deltaT = currTime - lastTime;
+        if (deltaT >= 1.0/FPS)
+        {
+            background.iFrame = (background.iFrame + 1) % 100;
+        }
+        offsetTexBg.s = background.iFrame * 0.01;
+        offsetTexBg.t = 0.0;
+        glUniform2f(glGetUniformLocation(shaderID, "offsetTex"),offsetTexBg.s, offsetTexBg.t);
 
-		if (deltaT >= 1.0/FPS)
-		{
-			background.iFrame = (background.iFrame + 1) % 100;
-		}
-		offsetTexBg.s = background.iFrame * 0.01;
-		offsetTexBg.t = 0.0;
-		glUniform2f(glGetUniformLocation(shaderID, "offsetTex"),offsetTexBg.s, offsetTexBg.t);
+        glBindVertexArray(background.VAO); // Conectando ao buffer de geometria
+        glBindTexture(GL_TEXTURE_2D, background.texID); // Conectando ao buffer de textura
 
-		glBindVertexArray(background.VAO); // Conectando ao buffer de geometria
-		glBindTexture(GL_TEXTURE_2D, background.texID); // Conectando ao buffer de textura
+        // Chamada de desenho - drawcall
+        // Poligono Preenchido - GL_TRIANGLES
+        glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
 
-		// Chamada de desenho - drawcall
-		// Poligono Preenchido - GL_TRIANGLES
-		glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+        //---------------------------------------------------------------------
+        //----------INICIO DO COMENTARIO DO CÓDIGO ANTIGO
+        /*
+        // Desenho do vampirao
+        // Matriz de transformaçao do objeto - Matriz de modelo
+        model = mat4(1); //matriz identidade
+        model = translate(model,vampirao.position);
+        model = rotate(model, radians(0.0f), vec3(0.0, 0.0, 1.0));
+        model = scale(model,vampirao.dimensions);
+        glUniformMatrix4fv(glGetUniformLocation(shaderID, "model"), 1, GL_FALSE, value_ptr(model));
 
+        vec2 offsetTex;
 
-		//---------------------------------------------------------------------
-		// Desenho do vampirao
-		// Matriz de transformaçao do objeto - Matriz de modelo
-		model = mat4(1); //matriz identidade
-		model = translate(model,vampirao.position);
-		model = rotate(model, radians(0.0f), vec3(0.0, 0.0, 1.0));
-		model = scale(model,vampirao.dimensions);
-		glUniformMatrix4fv(glGetUniformLocation(shaderID, "model"), 1, GL_FALSE, value_ptr(model));
+        if (deltaT >= 1.0/FPS)
+        {
+            vampirao.iFrame = (vampirao.iFrame + 1) % vampirao.nFrames; // incremento "circular"
+            lastTime = currTime;
+        }
 
-		vec2 offsetTex;
+        offsetTex.s = vampirao.iFrame * vampirao.ds;
+        offsetTex.t = 0.0;
+        glUniform2f(glGetUniformLocation(shaderID, "offsetTex"),offsetTex.s, offsetTex.t);
 
-		if (deltaT >= 1.0/FPS)
-		{
-			vampirao.iFrame = (vampirao.iFrame + 1) % vampirao.nFrames; // incremento "circular"
-			lastTime = currTime;
-		}
+        glBindVertexArray(vampirao.VAO); // Conectando ao buffer de geometria
+        glBindTexture(GL_TEXTURE_2D, vampirao.texID); // Conectando ao buffer de textura
 
-		offsetTex.s = vampirao.iFrame * vampirao.ds;
-		offsetTex.t = 0.0;
-		glUniform2f(glGetUniformLocation(shaderID, "offsetTex"),offsetTex.s, offsetTex.t);
+        // Chamada de desenho - drawcall
+        // Poligono Preenchido - GL_TRIANGLES
+        glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+        */
+        //---------FIM DO COMENTÁRIO DO CÓDIGO ANTIGO
 
-		glBindVertexArray(vampirao.VAO); // Conectando ao buffer de geometria
-		glBindTexture(GL_TEXTURE_2D, vampirao.texID); // Conectando ao buffer de textura
+        //------ INICIO DA IMPLEMENTAÇÃO PARA O TRABALHO
+        // Processa input e atualiza personagem
+        vampirao.isMoving = false;
+        if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS || glfwGetKey(window, GLFW_KEY_UP) == GLFW_PRESS ||
+            glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS || glfwGetKey(window, GLFW_KEY_DOWN) == GLFW_PRESS ||
+            glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS || glfwGetKey(window, GLFW_KEY_LEFT) == GLFW_PRESS ||
+            glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS || glfwGetKey(window, GLFW_KEY_RIGHT) == GLFW_PRESS) {
+            vampirao.isMoving = true;
+        }
+        vampirao.processInput(window, (float)deltaT);
+        // Só avança o frame da animação se passou o tempo necessário
+        if (vampirao.isMoving && animTime >= 1.0 / FPS) {
+            vampirao.iFrame = (vampirao.iFrame + 1) % vampirao.nFrames;
+            animTime = 0.0;
+        } else if (!vampirao.isMoving) {
+            vampirao.iFrame = 0;
+            animTime = 0.0;
+        }
 
-		// Chamada de desenho - drawcall
-		// Poligono Preenchido - GL_TRIANGLES
-		glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
-		//---------------------------------------------------------------------------
+        // Matriz de transformação do personagem
+        model = mat4(1);
+        model = translate(model, vampirao.position);
+        model = rotate(model, radians(0.0f), vec3(0.0, 0.0, 1.0));
+        model = scale(model, vampirao.dimensions);
+        glUniformMatrix4fv(glGetUniformLocation(shaderID, "model"), 1, GL_FALSE, value_ptr(model));
 
-		// Troca os buffers da tela
-		glfwSwapBuffers(window);
-	}
-		
-	// Finaliza a execução da GLFW, limpando os recursos alocados por ela
-	glfwTerminate();
-	return 0;
+        // Calcula o offset correto para spritesheet
+        offsetTex.s = vampirao.iFrame * vampirao.ds;
+        offsetTex.t = vampirao.iAnimation * vampirao.dt;
+        glUniform2f(glGetUniformLocation(shaderID, "offsetTex"), offsetTex.s, offsetTex.t);
+
+        glBindVertexArray(vampirao.VAO);
+        glBindTexture(GL_TEXTURE_2D, vampirao.texID);
+        glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+
+        // -------FIM DA IMPLEMENTAÇÃO PARA O TRABALHO
+
+        // Troca os buffers da tela
+        glfwSwapBuffers(window);
+    }
+        
+    // Finaliza a execução da GLFW, limpando os recursos alocados por ela
+    glfwTerminate();
+    return 0;
 }
 
 // Função de callback de teclado - só pode ter uma instância (deve ser estática se
@@ -321,8 +443,8 @@ int main()
 // ou solta via GLFW
 void key_callback(GLFWwindow *window, int key, int scancode, int action, int mode)
 {
-	if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS)
-		glfwSetWindowShouldClose(window, GL_TRUE);
+    if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS)
+        glfwSetWindowShouldClose(window, GL_TRUE);
 }
 
 // Esta função está bastante hardcoded - objetivo é compilar e "buildar" um programa de
@@ -332,49 +454,49 @@ void key_callback(GLFWwindow *window, int key, int scancode, int action, int mod
 //  A função retorna o identificador do programa de shader
 int setupShader()
 {
-	// Vertex shader
-	GLuint vertexShader = glCreateShader(GL_VERTEX_SHADER);
-	glShaderSource(vertexShader, 1, &vertexShaderSource, NULL);
-	glCompileShader(vertexShader);
-	// Checando erros de compilação (exibição via log no terminal)
-	GLint success;
-	GLchar infoLog[512];
-	glGetShaderiv(vertexShader, GL_COMPILE_STATUS, &success);
-	if (!success)
-	{
-		glGetShaderInfoLog(vertexShader, 512, NULL, infoLog);
-		std::cout << "ERROR::SHADER::VERTEX::COMPILATION_FAILED\n"
-				  << infoLog << std::endl;
-	}
-	// Fragment shader
-	GLuint fragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
-	glShaderSource(fragmentShader, 1, &fragmentShaderSource, NULL);
-	glCompileShader(fragmentShader);
-	// Checando erros de compilação (exibição via log no terminal)
-	glGetShaderiv(fragmentShader, GL_COMPILE_STATUS, &success);
-	if (!success)
-	{
-		glGetShaderInfoLog(fragmentShader, 512, NULL, infoLog);
-		std::cout << "ERROR::SHADER::FRAGMENT::COMPILATION_FAILED\n"
-				  << infoLog << std::endl;
-	}
-	// Linkando os shaders e criando o identificador do programa de shader
-	GLuint shaderProgram = glCreateProgram();
-	glAttachShader(shaderProgram, vertexShader);
-	glAttachShader(shaderProgram, fragmentShader);
-	glLinkProgram(shaderProgram);
-	// Checando por erros de linkagem
-	glGetProgramiv(shaderProgram, GL_LINK_STATUS, &success);
-	if (!success)
-	{
-		glGetProgramInfoLog(shaderProgram, 512, NULL, infoLog);
-		std::cout << "ERROR::SHADER::PROGRAM::LINKING_FAILED\n"
-				  << infoLog << std::endl;
-	}
-	glDeleteShader(vertexShader);
-	glDeleteShader(fragmentShader);
+    // Vertex shader
+    GLuint vertexShader = glCreateShader(GL_VERTEX_SHADER);
+    glShaderSource(vertexShader, 1, &vertexShaderSource, NULL);
+    glCompileShader(vertexShader);
+    // Checando erros de compilação (exibição via log no terminal)
+    GLint success;
+    GLchar infoLog[512];
+    glGetShaderiv(vertexShader, GL_COMPILE_STATUS, &success);
+    if (!success)
+    {
+        glGetShaderInfoLog(vertexShader, 512, NULL, infoLog);
+        std::cout << "ERROR::SHADER::VERTEX::COMPILATION_FAILED\n"
+                  << infoLog << std::endl;
+    }
+    // Fragment shader
+    GLuint fragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
+    glShaderSource(fragmentShader, 1, &fragmentShaderSource, NULL);
+    glCompileShader(fragmentShader);
+    // Checando erros de compilação (exibição via log no terminal)
+    glGetShaderiv(fragmentShader, GL_COMPILE_STATUS, &success);
+    if (!success)
+    {
+        glGetShaderInfoLog(fragmentShader, 512, NULL, infoLog);
+        std::cout << "ERROR::SHADER::FRAGMENT::COMPILATION_FAILED\n"
+                  << infoLog << std::endl;
+    }
+    // Linkando os shaders e criando o identificador do programa de shader
+    GLuint shaderProgram = glCreateProgram();
+    glAttachShader(shaderProgram, vertexShader);
+    glAttachShader(shaderProgram, fragmentShader);
+    glLinkProgram(shaderProgram);
+    // Checando por erros de linkagem
+    glGetProgramiv(shaderProgram, GL_LINK_STATUS, &success);
+    if (!success)
+    {
+        glGetProgramInfoLog(shaderProgram, 512, NULL, infoLog);
+        std::cout << "ERROR::SHADER::PROGRAM::LINKING_FAILED\n"
+                  << infoLog << std::endl;
+    }
+    glDeleteShader(vertexShader);
+    glDeleteShader(fragmentShader);
 
-	return shaderProgram;
+    return shaderProgram;
 }
 
 // Esta função está bastante harcoded - objetivo é criar os buffers que armazenam a
@@ -385,97 +507,97 @@ int setupShader()
 int setupSprite(int nAnimations, int nFrames, float &ds, float &dt)
 {
 
-	ds = 1.0 / (float) nFrames;
-	dt = 1.0 / (float) nAnimations;
-	// Aqui setamos as coordenadas x, y e z do triângulo e as armazenamos de forma
-	// sequencial, já visando mandar para o VBO (Vertex Buffer Objects)
-	// Cada atributo do vértice (coordenada, cores, coordenadas de textura, normal, etc)
-	// Pode ser arazenado em um VBO único ou em VBOs separados
-	GLfloat vertices[] = {
-		// x   y    z    s     t
-		-0.5,  0.5, 0.0, 0.0, dt, //V0
-		-0.5, -0.5, 0.0, 0.0, 0.0, //V1
-		 0.5,  0.5, 0.0, ds, dt, //V2
-		 0.5, -0.5, 0.0, ds, 0.0  //V3
-		};
+    ds = 1.0 / (float) nFrames;
+    dt = 1.0 / (float) nAnimations;
+    // Aqui setamos as coordenadas x, y e z do triângulo e as armazenamos de forma
+    // sequencial, já visando mandar para o VBO (Vertex Buffer Objects)
+    // Cada atributo do vértice (coordenada, cores, coordenadas de textura, normal, etc)
+    // Pode ser arazenado em um VBO único ou em VBOs separados
+    GLfloat vertices[] = {
+        // x   y    z    s     t
+        -0.5,  0.5, 0.0, 0.0, dt, //V0
+        -0.5, -0.5, 0.0, 0.0, 0.0, //V1
+         0.5,  0.5, 0.0, ds, dt, //V2
+         0.5, -0.5, 0.0, ds, 0.0  //V3
+        };
 
-	GLuint VBO, VAO;
-	// Geração do identificador do VBO
-	glGenBuffers(1, &VBO);
-	// Faz a conexão (vincula) do buffer como um buffer de array
-	glBindBuffer(GL_ARRAY_BUFFER, VBO);
-	// Envia os dados do array de floats para o buffer da OpenGl
-	glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
+    GLuint VBO, VAO;
+    // Geração do identificador do VBO
+    glGenBuffers(1, &VBO);
+    // Faz a conexão (vincula) do buffer como um buffer de array
+    glBindBuffer(GL_ARRAY_BUFFER, VBO);
+    // Envia os dados do array de floats para o buffer da OpenGl
+    glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
 
-	// Geração do identificador do VAO (Vertex Array Object)
-	glGenVertexArrays(1, &VAO);
-	// Vincula (bind) o VAO primeiro, e em seguida  conecta e seta o(s) buffer(s) de vértices
-	// e os ponteiros para os atributos
-	glBindVertexArray(VAO);
-	// Para cada atributo do vertice, criamos um "AttribPointer" (ponteiro para o atributo), indicando:
-	//  Localização no shader * (a localização dos atributos devem ser correspondentes no layout especificado no vertex shader)
-	//  Numero de valores que o atributo tem (por ex, 3 coordenadas xyz)
-	//  Tipo do dado
-	//  Se está normalizado (entre zero e um)
-	//  Tamanho em bytes
-	//  Deslocamento a partir do byte zero
+    // Geração do identificador do VAO (Vertex Array Object)
+    glGenVertexArrays(1, &VAO);
+    // Vincula (bind) o VAO primeiro, e em seguida  conecta e seta o(s) buffer(s) de vértices
+    // e os ponteiros para os atributos
+    glBindVertexArray(VAO);
+    // Para cada atributo do vertice, criamos um "AttribPointer" (ponteiro para o atributo), indicando:
+    //  Localização no shader * (a localização dos atributos devem ser correspondentes no layout especificado no vertex shader)
+    //  Numero de valores que o atributo tem (por ex, 3 coordenadas xyz)
+    //  Tipo do dado
+    //  Se está normalizado (entre zero e um)
+    //  Tamanho em bytes
+    //  Deslocamento a partir do byte zero
 
-	// Ponteiro pro atributo 0 - Posição - coordenadas x, y, z
-	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(GLfloat), (GLvoid *)0);
-	glEnableVertexAttribArray(0);
+    // Ponteiro pro atributo 0 - Posição - coordenadas x, y, z
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(GLfloat), (GLvoid *)0);
+    glEnableVertexAttribArray(0);
 
-	// Ponteiro pro atributo 1 - Coordenada de textura s, t
-	glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(GLfloat), (GLvoid *)(3 * sizeof(GLfloat)));
-	glEnableVertexAttribArray(1);
+    // Ponteiro pro atributo 1 - Coordenada de textura s, t
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(GLfloat), (GLvoid *)(3 * sizeof(GLfloat)));
+    glEnableVertexAttribArray(1);
 
-	// Observe que isso é permitido, a chamada para glVertexAttribPointer registrou o VBO como o objeto de buffer de vértice
-	// atualmente vinculado - para que depois possamos desvincular com segurança
-	glBindBuffer(GL_ARRAY_BUFFER, 0);
+    // Observe que isso é permitido, a chamada para glVertexAttribPointer registrou o VBO como o objeto de buffer de vértice
+    // atualmente vinculado - para que depois possamos desvincular com segurança
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
 
-	// Desvincula o VAO (é uma boa prática desvincular qualquer buffer ou array para evitar bugs medonhos)
-	glBindVertexArray(0);
+    // Desvincula o VAO (é uma boa prática desvincular qualquer buffer ou array para evitar bugs medonhos)
+    glBindVertexArray(0);
 
-	return VAO;
+    return VAO;
 }
 
 int loadTexture(string filePath, int &width, int &height)
 {
-	GLuint texID;
+    GLuint texID;
 
-	// Gera o identificador da textura na memória
-	glGenTextures(1, &texID);
-	glBindTexture(GL_TEXTURE_2D, texID);
+    // Gera o identificador da textura na memória
+    glGenTextures(1, &texID);
+    glBindTexture(GL_TEXTURE_2D, texID);
 
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
 
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 
-	int nrChannels;
+    int nrChannels;
 
-	unsigned char *data = stbi_load(filePath.c_str(), &width, &height, &nrChannels, 0);
+    unsigned char *data = stbi_load(filePath.c_str(), &width, &height, &nrChannels, 0);
 
-	if (data)
-	{
-		if (nrChannels == 3) // jpg, bmp
-		{
-			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, data);
-		}
-		else // png
-		{
-			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, data);
-		}
-		glGenerateMipmap(GL_TEXTURE_2D);
-	}
-	else
-	{
-		std::cout << "Failed to load texture" << std::endl;
-	}
+    if (data)
+    {
+        if (nrChannels == 3) // jpg, bmp
+        {
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, data);
+        }
+        else // png
+        {
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, data);
+        }
+        glGenerateMipmap(GL_TEXTURE_2D);
+    }
+    else
+    {
+        std::cout << "Failed to load texture" << std::endl;
+    }
 
-	stbi_image_free(data);
+    stbi_image_free(data);
 
-	glBindTexture(GL_TEXTURE_2D, 0);
+    glBindTexture(GL_TEXTURE_2D, 0);
 
-	return texID;
+    return texID;
 }
